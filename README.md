@@ -65,7 +65,7 @@ This application allows you to back up the files associated
 with an Internet Archive account. Just provide the username,
 and we'll take care of the rest. Your files will be organized
 into folders for each identifier, and we will show you how long
-the backup will take. Let's get started!
+the backup will take.
 
 Enter the Internet Archive username: exampleuser
 
