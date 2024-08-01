@@ -5,7 +5,6 @@ import xml.etree.ElementTree as ET
 from tqdm import tqdm
 from datetime import timedelta
 from aiohttp import ClientSession
-from tkinter import Tk, messagebox
 
 def print_intro():
     intro_text = """
@@ -39,12 +38,6 @@ def calculate_estimated_time(total_size, speed_mbps):
     minutes, seconds = divmod(remainder, 60)
     
     return f"{int(weeks)} weeks, {int(days)} days, {int(hours)} hours, {int(minutes)} minutes, {int(seconds)} seconds"
-
-def show_message(title, message):
-    root = Tk()
-    root.withdraw() 
-    messagebox.showinfo(title, message)
-    root.destroy()
 
 async def fetch_account_details(session, username, page):
     base_url = "https://archive.org/services/search/beta/page_production/"
@@ -148,7 +141,8 @@ async def process_identifier(session, identifier, save_folder):
         identifier_folder = os.path.join(save_folder, identifier)
         os.makedirs(identifier_folder, exist_ok=True)
         print(f"Processing Identifier: {identifier}")
-        for file_name, _ in files:
+        for file_name, size in files:
+            print(f"File: {file_name}, Size: {human_readable_size(size)}")
             save_path = os.path.join(identifier_folder, file_name.replace(' ', ''))
             await download_file(session, redirect_url, file_name, save_path)
 
@@ -188,6 +182,8 @@ async def main():
                 files, identifier_size = await list_files(session, redirect_url)
                 print(f"Total size for Identifier '{identifier}': {human_readable_size(identifier_size)}")
                 total_size += identifier_size
+                for file_name, size in files:
+                    print(f"File: {file_name}, Size: {human_readable_size(size)}")
         
         print(f"\nTotal size for '{username}': {human_readable_size(total_size)}")
         estimated_time = calculate_estimated_time(total_size, speed_mbps=2.75)
@@ -199,9 +195,9 @@ async def main():
                 print(f"\nStarting backup for Identifier: {identifier}")
                 await process_identifier(session, identifier, save_folder)
             
-            show_message("Backup Complete", "All identifiers have been successfully backed up!")
+            print("All identifiers have been successfully backed up!")
         else:
-            show_message("Backup Cancelled", "The backup process has been cancelled.")
+            print("The backup process has been cancelled.")
 
 if __name__ == "__main__":
     asyncio.run(main())
