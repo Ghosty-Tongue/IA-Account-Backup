@@ -3,7 +3,7 @@ import os
 import aiohttp
 import xml.etree.ElementTree as ET
 from tqdm import tqdm
-from datetime import datetime, timedelta
+from datetime import timedelta
 from aiohttp import ClientSession
 from tkinter import Tk, messagebox
 
@@ -56,69 +56,90 @@ async def fetch_account_details(session, username, page):
         'hits_per_page': 999,
         'page': page
     }
-    async with session.get(base_url, params=params) as response:
-        if response.status == 200:
-            return await response.json()
-        else:
-            response.raise_for_status()
+    try:
+        async with session.get(base_url, params=params) as response:
+            if response.status == 200:
+                return await response.json()
+            else:
+                response.raise_for_status()
+    except aiohttp.ClientError as e:
+        print(f"Network error occurred while fetching account details: {e}")
+    except Exception as e:
+        print(f"An unexpected error occurred while fetching account details: {e}")
+    return None
 
 async def get_redirect_url(session, identifier):
     base_url = f"https://s3.us.archive.org/{identifier}/"
-    async with session.get(base_url, allow_redirects=True) as response:
-        if response.status == 200:
-            return str(response.url)
-        elif response.status == 403:
-            content = await response.text()
-            root = ET.fromstring(content)
-            code = root.find('.//Code')
-            if code is not None and code.text == 'NoSuchBucket':
-                print("Oops! That Identifier seems to have gone on vacation. It’s not here!")
+    try:
+        async with session.get(base_url, allow_redirects=True) as response:
+            if response.status == 200:
+                return str(response.url)
+            elif response.status == 403:
+                content = await response.text()
+                root = ET.fromstring(content)
+                code = root.find('.//Code')
+                if code is not None and code.text == 'NoSuchBucket':
+                    print("Oops! That Identifier seems to have gone on vacation. It’s not here!")
+                else:
+                    print(f"Yikes! Something went wrong. Status code: {response.status}. Maybe try a different Identifier?")
             else:
-                print(f"Yikes! Something went wrong. Status code: {response.status}. Maybe try a different Identifier?")
-        else:
-            print(f"Uh-oh! Failed to retrieve the file list. Status code: {response.status}. It might be a wild goose chase!")
-        return None
+                print(f"Uh-oh! Failed to retrieve the file list. Status code: {response.status}. It might be a wild goose chase!")
+    except Exception as e:
+        print(f"An error occurred while retrieving redirect URL: {e}")
+    return None
 
 async def list_files(session, redirect_url):
-    async with session.get(redirect_url) as response:
-        if response.status == 200:
-            content = await response.text()
-            root = ET.fromstring(content)
-            files = []
-            total_size = 0
-            
-            for content in root.findall('.//Contents'):
-                key = content.find('Key').text
-                size = int(content.find('Size').text)
-                files.append((key, size))
-                total_size += size
-            
-            return files, total_size
-        else:
-            print(f"Oopsie! Failed to retrieve the file list. Status code: {response.status}. The files are playing hide and seek!")
-            return [], 0
+    try:
+        async with session.get(redirect_url) as response:
+            if response.status == 200:
+                content = await response.text()
+                root = ET.fromstring(content)
+                files = []
+                total_size = 0
+                
+                for content in root.findall('.//Contents'):
+                    key = content.find('Key').text
+                    size = int(content.find('Size').text)
+                    files.append((key, size))
+                    total_size += size
+                
+                return files, total_size
+            else:
+                print(f"Oopsie! Failed to retrieve the file list. Status code: {response.status}. The files are playing hide and seek!")
+                return [], 0
+    except Exception as e:
+        print(f"An error occurred while listing files: {e}")
+        return [], 0
 
 async def download_file(session, redirect_url, file_name, save_path):
     os.makedirs(os.path.dirname(save_path), exist_ok=True)
     file_url = f"{redirect_url}/{file_name}"
-    async with session.get(file_url) as response:
-        if response.status == 200:
-            total_size = int(response.headers.get('content-length', 0))
-            with open(save_path, 'wb') as file, tqdm(
-                desc=file_name,
-                total=total_size,
-                unit='B',
-                unit_scale=True,
-                unit_divisor=1024,
-                bar_format="{l_bar}{bar} [{elapsed}<{remaining}, {rate_fmt}]",
-            ) as bar:
-                async for chunk in response.content.iter_any():
-                    if chunk:
-                        file.write(chunk)
-                        bar.update(len(chunk))
-            print(f"Success! '{file_name}' has been downloaded. You’re on a roll!")
-        else:
-            print(f"Uh-oh! Failed to download '{file_name}'. Status code: {response.status}. Maybe it's playing hard to get?")
+    
+    try:
+        async with session.get(file_url) as response:
+            if response.status == 200:
+                total_size = int(response.headers.get('content-length', 0))
+                with open(save_path, 'wb') as file, tqdm(
+                    desc=file_name,
+                    total=total_size,
+                    unit='B',
+                    unit_scale=True,
+                    unit_divisor=1024,
+                    bar_format="{l_bar}{bar} [{elapsed}<{remaining}, {rate_fmt}]",
+                ) as bar:
+                    async for chunk in response.content.iter_any():
+                        if chunk:
+                            file.write(chunk)
+                            bar.update(len(chunk))
+                print(f"Success! '{file_name}' has been downloaded.")
+            elif response.status == 403:
+                print(f"Access denied to '{file_name}'. Status code: {response.status}.")
+            else:
+                print(f"Failed to download '{file_name}'. Status code: {response.status}.")
+    except aiohttp.ClientError as e:
+        print(f"Network error occurred while downloading '{file_name}': {e}")
+    except Exception as e:
+        print(f"An unexpected error occurred while downloading '{file_name}': {e}")
 
 async def process_identifier(session, identifier, save_folder):
     redirect_url = await get_redirect_url(session, identifier)
@@ -144,14 +165,17 @@ async def main():
         while True:
             try:
                 account_details = await fetch_account_details(session, username, page)
-                uploads = account_details['response']['body']['page_elements']['uploads']['hits']['hits']
-                if not uploads:
+                if account_details:
+                    uploads = account_details['response']['body']['page_elements']['uploads']['hits']['hits']
+                    if not uploads:
+                        break
+                    for item in uploads:
+                        identifier = item['fields']['identifier']
+                        all_identifiers.append(identifier)
+                    page += 1
+                    print(f"Page {page - 1} collected")
+                else:
                     break
-                for item in uploads:
-                    identifier = item['fields']['identifier']
-                    all_identifiers.append(identifier)
-                page += 1
-                print(f"Page {page - 1} collected")
             except Exception as e:
                 print(f"An error occurred while fetching data: {e}")
                 break
