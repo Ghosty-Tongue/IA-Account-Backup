@@ -3,6 +3,7 @@
 ## NOTE
 
 This is meant for older devices please use `pip install internetarchive` on newer devices. 
+**Example Command:** `ia download --search uploader:youremail@example.com`
 
 ## Overview
 
