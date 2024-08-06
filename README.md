@@ -1,5 +1,9 @@
 # Internet Archive Account Backup
 
+## NOTE
+
+This is meant for older devices please use `pip install internetarchive` on newer devices. 
+
 ## Overview
 
 The **Internet Archive Account Backup** tool is designed to help you back up files from an Internet Archive account. It fetches all the files associated with a specified username, organizes them by identifier, and downloads them to your local machine. The tool also provides an estimate of the total download time based on the size of the files and the expected download speed.
